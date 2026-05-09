@@ -1,6 +1,8 @@
 def transcribe(audio_path: str, progress_callback=None) -> dict:
+    import sys
     import whisper
-    import whisper.transcribe as _wt
+    import whisper.transcribe  # ensure submodule is loaded into sys.modules
+    _wt = sys.modules["whisper.transcribe"]
 
     model = whisper.load_model("base")
     _original_tqdm = _wt.tqdm
