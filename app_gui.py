@@ -16,6 +16,7 @@ AUDIO_FILETYPES = [
     ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
     ("All files", "*.*"),
 ]
+DEFAULT_INCREMENT = 5.0
 
 
 class App(tk.Tk):
@@ -25,8 +26,10 @@ class App(tk.Tk):
         self.resizable(False, False)
         self._file_path = tk.StringVar()
         self._transcribe = tk.BooleanVar()
+        self._increment = tk.StringVar(value=str(DEFAULT_INCREMENT))
         self._status = tk.StringVar()
         self._build_ui()
+        self._transcribe.trace_add("write", self._on_transcribe_toggle)
         error_log.install_hook(lambda: self)
 
     def _build_ui(self):
@@ -43,10 +46,18 @@ class App(tk.Tk):
             variable=self._transcribe,
         ).pack(anchor="w", padx=16)
 
+        increment_frame = tk.Frame(self, padx=16)
+        increment_frame.pack(anchor="w", pady=(2, 8))
+        tk.Label(increment_frame, text="Lyric increment (s):").pack(side="left")
+        self._increment_entry = tk.Entry(
+            increment_frame, textvariable=self._increment, width=6, state="disabled"
+        )
+        self._increment_entry.pack(side="left", padx=(6, 0))
+
         self._generate_btn = tk.Button(
             self, text="Generate", command=self._generate, padx=20, pady=6
         )
-        self._generate_btn.pack(pady=(8, 6))
+        self._generate_btn.pack(pady=(0, 6))
 
         self._progress_frame = tk.Frame(self, height=20)
         self._progress_frame.pack(fill="x", padx=16, pady=(0, 4))
@@ -56,10 +67,21 @@ class App(tk.Tk):
 
         tk.Label(self, textvariable=self._status, fg="gray").pack(pady=(0, 12))
 
+    def _on_transcribe_toggle(self, *_):
+        state = "normal" if self._transcribe.get() else "disabled"
+        self._increment_entry.config(state=state)
+
     def _browse(self):
         path = filedialog.askopenfilename(filetypes=AUDIO_FILETYPES)
         if path:
             self._file_path.set(path)
+
+    def _increment_value(self) -> float:
+        try:
+            v = float(self._increment.get())
+            return v if v > 0 else DEFAULT_INCREMENT
+        except ValueError:
+            return DEFAULT_INCREMENT
 
     def _generate(self):
         path = self._file_path.get()
@@ -77,7 +99,12 @@ class App(tk.Tk):
             self.after(0, lambda: self._update_progress(int(fraction * 100)))
 
         try:
-            out = save(path, transcribe=transcribing, progress_callback=on_progress if transcribing else None)
+            out = save(
+                path,
+                transcribe=transcribing,
+                transcribe_increment=self._increment_value(),
+                progress_callback=on_progress if transcribing else None,
+            )
             self.after(0, lambda: self._on_done(out))
         except Exception as e:
             self.after(0, lambda: self._on_error(e))

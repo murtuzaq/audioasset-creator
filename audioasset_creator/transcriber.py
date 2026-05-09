@@ -1,4 +1,4 @@
-def transcribe(audio_path: str, progress_callback=None) -> dict:
+def transcribe(audio_path: str, increment: float = 5.0, progress_callback=None) -> dict:
     import sys
     import tqdm as _tqdm_mod
     import whisper
@@ -56,22 +56,18 @@ def transcribe(audio_path: str, progress_callback=None) -> dict:
 
     return {
         "text": result["text"].strip(),
-        "segments": [
-            {
-                "index": i,
-                "start": round(s["start"], 3),
-                "end": round(s["end"], 3),
-                "duration": round(s["end"] - s["start"], 3),
-                "text": s["text"].strip(),
-                "words": [
-                    {
-                        "word": w["word"].strip(),
-                        "start": round(w["start"], 3),
-                        "end": round(w["end"], 3),
-                    }
-                    for w in s.get("words", [])
-                ],
-            }
-            for i, s in enumerate(result["segments"])
-        ],
+        "cues": _build_cues(result["segments"], increment),
     }
+
+
+def _build_cues(segments: list, increment: float) -> list:
+    buckets: dict[int, list[str]] = {}
+    for seg in segments:
+        for w in seg.get("words", []):
+            idx = int(w["start"] / increment)
+            buckets.setdefault(idx, []).append(w["word"].strip())
+
+    return [
+        {"start": round(idx * increment, 3), "text": " ".join(words)}
+        for idx, words in sorted(buckets.items())
+    ]

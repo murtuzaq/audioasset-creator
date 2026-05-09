@@ -40,11 +40,12 @@ def extract(audio_path: str) -> dict:
     }
 
 
-def save(audio_path: str, transcribe: bool = False, progress_callback=None) -> str:
+def save(audio_path: str, transcribe: bool = False, transcribe_increment: float = 5.0, progress_callback=None) -> str:
     info = extract(audio_path)
     if transcribe:
         from .transcriber import transcribe as do_transcribe
-        info["lyrics"] = do_transcribe(audio_path, progress_callback=progress_callback)
+        info["header"]["lyric_increment_seconds"] = transcribe_increment
+        info["lyrics"] = do_transcribe(audio_path, increment=transcribe_increment, progress_callback=progress_callback)
     out_path = os.path.splitext(audio_path)[0] + ".info"
     with open(out_path, "w") as f:
         json.dump(info, f, indent=2)
