@@ -1,7 +1,13 @@
+import os
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
+
+import apputils
 from audioasset_creator import save
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+apputils.setup(os.path.join(_HERE, "audioasset_creator.err"))
 
 AUDIO_FILETYPES = [
     ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
@@ -18,6 +24,7 @@ class App(tk.Tk):
         self._transcribe = tk.BooleanVar()
         self._status = tk.StringVar()
         self._build_ui()
+        apputils.install_hook(lambda: self)
 
     def _build_ui(self):
         file_frame = tk.Frame(self, padx=16, pady=16)
@@ -38,7 +45,6 @@ class App(tk.Tk):
         )
         self._generate_btn.pack(pady=(8, 6))
 
-        # Reserved container keeps layout stable when bar is hidden
         self._progress_frame = tk.Frame(self, height=20)
         self._progress_frame.pack(fill="x", padx=16, pady=(0, 4))
         self._progress_frame.pack_propagate(False)
@@ -55,6 +61,7 @@ class App(tk.Tk):
     def _generate(self):
         path = self._file_path.get()
         if not path:
+            from tkinter import messagebox
             messagebox.showwarning("No file selected", "Please select an audio file first.")
             return
         self._set_busy(True)
@@ -70,8 +77,7 @@ class App(tk.Tk):
             out = save(path, transcribe=transcribing, progress_callback=on_progress if transcribing else None)
             self.after(0, lambda: self._on_done(out))
         except Exception as e:
-            msg = str(e)
-            self.after(0, lambda: self._on_error(msg))
+            self.after(0, lambda: self._on_error(e))
 
     def _update_progress(self, value: int):
         self._progress["value"] = value
@@ -79,11 +85,12 @@ class App(tk.Tk):
     def _on_done(self, out: str):
         self._update_progress(100)
         self._set_busy(False)
+        from tkinter import messagebox
         messagebox.showinfo("Done", f"Asset saved to:\n{out}")
 
-    def _on_error(self, msg: str):
+    def _on_error(self, exc: Exception):
         self._set_busy(False)
-        messagebox.showerror("Error", msg)
+        apputils.show(self, exc, context="generate")
 
     def _set_busy(self, busy: bool):
         if busy:
