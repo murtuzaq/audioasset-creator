@@ -45,7 +45,7 @@ def transcribe(audio_path: str, progress_callback=None) -> dict:
         _wt.tqdm = proxy
 
     try:
-        result = model.transcribe(audio_path)
+        result = model.transcribe(audio_path, fp16=False)
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found. Install it and ensure it is on your PATH.\n"
