@@ -45,7 +45,7 @@ def transcribe(audio_path: str, progress_callback=None) -> dict:
         _wt.tqdm = proxy
 
     try:
-        result = model.transcribe(audio_path, fp16=False)
+        result = model.transcribe(audio_path, fp16=False, word_timestamps=True, verbose=False)
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found. Install it and ensure it is on your PATH.\n"
@@ -58,10 +58,20 @@ def transcribe(audio_path: str, progress_callback=None) -> dict:
         "text": result["text"].strip(),
         "segments": [
             {
+                "index": i,
                 "start": round(s["start"], 3),
                 "end": round(s["end"], 3),
+                "duration": round(s["end"] - s["start"], 3),
                 "text": s["text"].strip(),
+                "words": [
+                    {
+                        "word": w["word"].strip(),
+                        "start": round(w["start"], 3),
+                        "end": round(w["end"], 3),
+                    }
+                    for w in s.get("words", [])
+                ],
             }
-            for s in result["segments"]
+            for i, s in enumerate(result["segments"])
         ],
     }
