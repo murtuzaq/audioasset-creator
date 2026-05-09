@@ -1,13 +1,16 @@
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-import apputils
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, "utility", "error_log_py"))
+
+import error_log
 from audioasset_creator import save
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-apputils.setup(os.path.join(_HERE, "audioasset_creator.err"))
+error_log.setup(os.path.join(_HERE, "audioasset_creator.err"))
 
 AUDIO_FILETYPES = [
     ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
@@ -24,7 +27,7 @@ class App(tk.Tk):
         self._transcribe = tk.BooleanVar()
         self._status = tk.StringVar()
         self._build_ui()
-        apputils.install_hook(lambda: self)
+        error_log.install_hook(lambda: self)
 
     def _build_ui(self):
         file_frame = tk.Frame(self, padx=16, pady=16)
@@ -90,7 +93,7 @@ class App(tk.Tk):
 
     def _on_error(self, exc: Exception):
         self._set_busy(False)
-        apputils.show(self, exc, context="generate")
+        error_log.show(self, exc, context="generate")
 
     def _set_busy(self, busy: bool):
         if busy:

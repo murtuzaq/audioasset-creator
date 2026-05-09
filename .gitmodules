@@ -1,0 +1,3 @@
+[submodule "utility/error_log_py"]
+	path = utility/error_log_py
+	url = https://github.com/murtuzaq/error_log_py.git
