@@ -1,7 +1,7 @@
 import difflib
 import re
 
-_SIMILARITY_THRESHOLD = 0.5
+_SIMILARITY_THRESHOLD = 0.2
 
 
 def transcribe(
@@ -98,11 +98,14 @@ def _normalize(text: str) -> list[str]:
 
 
 def _check_similarity(known: str, transcribed: str) -> None:
-    known_words = _normalize(known)
-    transcribed_words = _normalize(transcribed)
-    ratio = difflib.SequenceMatcher(None, known_words, transcribed_words).ratio()
-    if ratio < _SIMILARITY_THRESHOLD:
+    known_words = set(_normalize(known))
+    transcribed_words = set(_normalize(transcribed))
+    union = known_words | transcribed_words
+    if not union:
+        return
+    jaccard = len(known_words & transcribed_words) / len(union)
+    if jaccard < _SIMILARITY_THRESHOLD:
         raise ValueError(
             f"The provided transcript doesn't appear to match the audio "
-            f"(similarity: {ratio:.0%}). Please check that you uploaded the correct file."
+            f"(word overlap: {jaccard:.0%}). Please check that you uploaded the correct file."
         )
