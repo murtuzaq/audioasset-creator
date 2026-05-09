@@ -1,3 +1,4 @@
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from audioasset_creator import save
@@ -14,6 +15,8 @@ class App(tk.Tk):
         self.title("Audio Asset Creator")
         self.resizable(False, False)
         self._file_path = tk.StringVar()
+        self._transcribe = tk.BooleanVar()
+        self._status = tk.StringVar()
         self._build_ui()
 
     def _build_ui(self):
@@ -24,7 +27,18 @@ class App(tk.Tk):
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
         tk.Button(file_frame, text="Browse", command=self._browse).grid(row=0, column=2, padx=(8, 0))
 
-        tk.Button(self, text="Generate", command=self._generate, padx=20, pady=6).pack(pady=(0, 16))
+        tk.Checkbutton(
+            self,
+            text="Transcribe lyrics",
+            variable=self._transcribe,
+        ).pack(anchor="w", padx=16)
+
+        self._generate_btn = tk.Button(
+            self, text="Generate", command=self._generate, padx=20, pady=6
+        )
+        self._generate_btn.pack(pady=(8, 4))
+
+        tk.Label(self, textvariable=self._status, fg="gray").pack(pady=(0, 12))
 
     def _browse(self):
         path = filedialog.askopenfilename(filetypes=AUDIO_FILETYPES)
@@ -36,11 +50,32 @@ class App(tk.Tk):
         if not path:
             messagebox.showwarning("No file selected", "Please select an audio file first.")
             return
+        self._set_busy(True)
+        threading.Thread(target=self._run_generate, args=(path,), daemon=True).start()
+
+    def _run_generate(self, path: str):
         try:
-            out = save(path)
-            messagebox.showinfo("Done", f"Asset saved to:\n{out}")
+            out = save(path, transcribe=self._transcribe.get())
+            self.after(0, lambda: self._on_done(out))
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            msg = str(e)
+            self.after(0, lambda: self._on_error(msg))
+
+    def _on_done(self, out: str):
+        self._set_busy(False)
+        messagebox.showinfo("Done", f"Asset saved to:\n{out}")
+
+    def _on_error(self, msg: str):
+        self._set_busy(False)
+        messagebox.showerror("Error", msg)
+
+    def _set_busy(self, busy: bool):
+        if busy:
+            self._generate_btn.config(state="disabled")
+            self._status.set("Generating..." if not self._transcribe.get() else "Transcribing lyrics, this may take a moment...")
+        else:
+            self._generate_btn.config(state="normal")
+            self._status.set("")
 
 
 if __name__ == "__main__":
