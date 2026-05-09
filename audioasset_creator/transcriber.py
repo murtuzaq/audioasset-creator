@@ -1,4 +1,15 @@
-def transcribe(audio_path: str, increment: float = 5.0, progress_callback=None) -> dict:
+import difflib
+import re
+
+_SIMILARITY_THRESHOLD = 0.5
+
+
+def transcribe(
+    audio_path: str,
+    increment: float = 5.0,
+    known_transcript: str | None = None,
+    progress_callback=None,
+) -> dict:
     import sys
     import tqdm as _tqdm_mod
     import whisper
@@ -45,7 +56,13 @@ def transcribe(audio_path: str, increment: float = 5.0, progress_callback=None) 
         _wt.tqdm = proxy
 
     try:
-        result = model.transcribe(audio_path, fp16=False, word_timestamps=True, verbose=False)
+        result = model.transcribe(
+            audio_path,
+            fp16=False,
+            word_timestamps=True,
+            verbose=False,
+            initial_prompt=known_transcript,
+        )
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found. Install it and ensure it is on your PATH.\n"
@@ -53,6 +70,9 @@ def transcribe(audio_path: str, increment: float = 5.0, progress_callback=None) 
         )
     finally:
         _wt.tqdm = _original_tqdm_module
+
+    if known_transcript:
+        _check_similarity(known_transcript, result["text"])
 
     return {
         "text": result["text"].strip(),
@@ -71,3 +91,18 @@ def _build_cues(segments: list, increment: float) -> list:
         {"start": round(idx * increment, 3), "text": " ".join(words)}
         for idx, words in sorted(buckets.items())
     ]
+
+
+def _normalize(text: str) -> list[str]:
+    return re.sub(r"[^\w\s]", "", text.lower()).split()
+
+
+def _check_similarity(known: str, transcribed: str) -> None:
+    known_words = _normalize(known)
+    transcribed_words = _normalize(transcribed)
+    ratio = difflib.SequenceMatcher(None, known_words, transcribed_words).ratio()
+    if ratio < _SIMILARITY_THRESHOLD:
+        raise ValueError(
+            f"The provided transcript doesn't appear to match the audio "
+            f"(similarity: {ratio:.0%}). Please check that you uploaded the correct file."
+        )

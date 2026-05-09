@@ -16,6 +16,10 @@ AUDIO_FILETYPES = [
     ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
     ("All files", "*.*"),
 ]
+TRANSCRIPT_FILETYPES = [
+    ("Text files", "*.txt"),
+    ("All files", "*.*"),
+]
 DEFAULT_INCREMENT = 5.0
 
 
@@ -27,6 +31,7 @@ class App(tk.Tk):
         self._file_path = tk.StringVar()
         self._transcribe = tk.BooleanVar()
         self._increment = tk.StringVar(value=str(DEFAULT_INCREMENT))
+        self._transcript_path = tk.StringVar()
         self._status = tk.StringVar()
         self._build_ui()
         self._transcribe.trace_add("write", self._on_transcribe_toggle)
@@ -38,7 +43,7 @@ class App(tk.Tk):
 
         tk.Label(file_frame, text="Audio File:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
-        tk.Button(file_frame, text="Browse", command=self._browse).grid(row=0, column=2, padx=(8, 0))
+        tk.Button(file_frame, text="Browse", command=self._browse_audio).grid(row=0, column=2, padx=(8, 0))
 
         tk.Checkbutton(
             self,
@@ -46,13 +51,34 @@ class App(tk.Tk):
             variable=self._transcribe,
         ).pack(anchor="w", padx=16)
 
-        increment_frame = tk.Frame(self, padx=16)
-        increment_frame.pack(anchor="w", pady=(2, 8))
-        tk.Label(increment_frame, text="Lyric increment (s):").pack(side="left")
-        self._increment_entry = tk.Entry(
-            increment_frame, textvariable=self._increment, width=6, state="disabled"
+        # Transcription options — enabled/disabled with the checkbox
+        self._tx_frame = tk.Frame(self, padx=32)
+        self._tx_frame.pack(anchor="w", fill="x", pady=(2, 8))
+
+        tk.Label(self._tx_frame, text="Lyric increment (s):").grid(row=0, column=0, sticky="w")
+        self._increment_entry = tk.Entry(self._tx_frame, textvariable=self._increment, width=6)
+        self._increment_entry.grid(row=0, column=1, sticky="w", padx=(6, 0))
+
+        tk.Label(self._tx_frame, text="Known transcript (optional):").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self._transcript_entry = tk.Entry(
+            self._tx_frame, textvariable=self._transcript_path, width=38, state="readonly"
         )
-        self._increment_entry.pack(side="left", padx=(6, 0))
+        self._transcript_entry.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        self._transcript_browse_btn = tk.Button(
+            self._tx_frame, text="Browse", command=self._browse_transcript
+        )
+        self._transcript_browse_btn.grid(row=1, column=2, padx=(6, 0), pady=(6, 0))
+        self._transcript_clear_btn = tk.Button(
+            self._tx_frame, text="Clear", command=lambda: self._transcript_path.set("")
+        )
+        self._transcript_clear_btn.grid(row=1, column=3, padx=(4, 0), pady=(6, 0))
+
+        self._tx_widgets = [
+            self._increment_entry,
+            self._transcript_browse_btn,
+            self._transcript_clear_btn,
+        ]
+        self._set_tx_state("disabled")
 
         self._generate_btn = tk.Button(
             self, text="Generate", command=self._generate, padx=20, pady=6
@@ -67,14 +93,22 @@ class App(tk.Tk):
 
         tk.Label(self, textvariable=self._status, fg="gray").pack(pady=(0, 12))
 
-    def _on_transcribe_toggle(self, *_):
-        state = "normal" if self._transcribe.get() else "disabled"
-        self._increment_entry.config(state=state)
+    def _set_tx_state(self, state: str):
+        for w in self._tx_widgets:
+            w.config(state=state)
 
-    def _browse(self):
+    def _on_transcribe_toggle(self, *_):
+        self._set_tx_state("normal" if self._transcribe.get() else "disabled")
+
+    def _browse_audio(self):
         path = filedialog.askopenfilename(filetypes=AUDIO_FILETYPES)
         if path:
             self._file_path.set(path)
+
+    def _browse_transcript(self):
+        path = filedialog.askopenfilename(filetypes=TRANSCRIPT_FILETYPES)
+        if path:
+            self._transcript_path.set(path)
 
     def _increment_value(self) -> float:
         try:
@@ -82,6 +116,13 @@ class App(tk.Tk):
             return v if v > 0 else DEFAULT_INCREMENT
         except ValueError:
             return DEFAULT_INCREMENT
+
+    def _known_transcript_text(self) -> str | None:
+        path = self._transcript_path.get()
+        if not path:
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
 
     def _generate(self):
         path = self._file_path.get()
@@ -99,10 +140,12 @@ class App(tk.Tk):
             self.after(0, lambda: self._update_progress(int(fraction * 100)))
 
         try:
+            known = self._known_transcript_text() if transcribing else None
             out = save(
                 path,
                 transcribe=transcribing,
                 transcribe_increment=self._increment_value(),
+                known_transcript=known,
                 progress_callback=on_progress if transcribing else None,
             )
             self.after(0, lambda: self._on_done(out))
