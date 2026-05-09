@@ -1,6 +1,6 @@
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from audioasset_creator import save
 
 AUDIO_FILETYPES = [
@@ -36,7 +36,10 @@ class App(tk.Tk):
         self._generate_btn = tk.Button(
             self, text="Generate", command=self._generate, padx=20, pady=6
         )
-        self._generate_btn.pack(pady=(8, 4))
+        self._generate_btn.pack(pady=(8, 6))
+
+        self._progress = ttk.Progressbar(self, mode="indeterminate", length=300)
+        self._progress.pack(padx=16, pady=(0, 4))
 
         tk.Label(self, textvariable=self._status, fg="gray").pack(pady=(0, 12))
 
@@ -72,8 +75,11 @@ class App(tk.Tk):
     def _set_busy(self, busy: bool):
         if busy:
             self._generate_btn.config(state="disabled")
-            self._status.set("Generating..." if not self._transcribe.get() else "Transcribing lyrics, this may take a moment...")
+            self._status.set("Transcribing lyrics, this may take a moment..." if self._transcribe.get() else "Generating...")
+            self._progress.start(12)
         else:
+            self._progress.stop()
+            self._progress["value"] = 0
             self._generate_btn.config(state="normal")
             self._status.set("")
 
