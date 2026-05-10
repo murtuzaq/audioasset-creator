@@ -42,8 +42,8 @@ class App(tk.Tk):
 
     def _build_ui(self):
         # Audio file row
-        file_frame = tk.Frame(self, padx=16, pady=(16, 4))
-        file_frame.pack(fill="x")
+        file_frame = tk.Frame(self, padx=16)
+        file_frame.pack(fill="x", pady=(16, 4))
 
         tk.Label(file_frame, text="Audio File:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
