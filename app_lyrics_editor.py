@@ -1,24 +1,56 @@
 import json
+import math
+import os
 import tkinter as tk
 from tkinter import messagebox
 
 
 class LyricsEditor(tk.Toplevel):
-    def __init__(self, parent, info_path: str, reference_transcript: str | None = None):
+    def __init__(
+        self,
+        parent,
+        info_path: str,
+        audio_path: str,
+        increment: float,
+        reference_transcript: str | None = None,
+    ):
         super().__init__(parent)
         self.title("Lyrics Editor")
         self.resizable(True, True)
         self.grab_set()
 
         self._info_path = info_path
+        self._audio_path = audio_path
+        self._increment = increment
         self._reference = reference_transcript
         self._cue_vars: list[tk.StringVar] = []
 
-        with open(info_path, "r", encoding="utf-8") as f:
-            self._info = json.load(f)
+        self._info = self._load_info()
+        self._ensure_cues()
 
         self._build_ui()
         self.geometry("940x560" if reference_transcript else "520x560")
+
+    def _load_info(self) -> dict:
+        if os.path.exists(self._info_path):
+            with open(self._info_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        from audioasset_creator.audio_info import extract
+        return extract(self._audio_path)
+
+    def _ensure_cues(self):
+        cues = self._info.get("lyrics", {}).get("cues", [])
+        if not cues:
+            from mutagen import File as MutagenFile
+            audio = MutagenFile(self._audio_path)
+            duration = audio.info.length if audio and audio.info else 0.0
+            slots = math.ceil(duration / self._increment) if duration > 0 else 0
+            cues = [
+                {"start": round(i * self._increment, 3), "text": ""}
+                for i in range(slots)
+            ]
+            self._info.setdefault("header", {})["lyric_increment_seconds"] = self._increment
+            self._info.setdefault("lyrics", {})["cues"] = cues
 
     def _build_ui(self):
         cues = self._info.get("lyrics", {}).get("cues", [])
@@ -31,7 +63,7 @@ class LyricsEditor(tk.Toplevel):
             ref_frame.pack(side="left", fill="both", expand=True, padx=(0, 8))
             self._build_reference_panel(ref_frame)
 
-        cue_frame = tk.LabelFrame(panels, text="Whisper cues  —  edit to correct")
+        cue_frame = tk.LabelFrame(panels, text="Cues  —  edit to correct")
         cue_frame.pack(side="left", fill="both", expand=True)
         self._build_cue_panel(cue_frame, cues)
 

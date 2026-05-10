@@ -37,10 +37,10 @@ class App(tk.Tk):
         self._status = tk.StringVar()
         self._last_info_path: str | None = None
         self._build_ui()
-        self._transcribe.trace_add("write", self._on_transcribe_toggle)
         error_log.install_hook(lambda: self)
 
     def _build_ui(self):
+        # Audio file row
         file_frame = tk.Frame(self, padx=16, pady=16)
         file_frame.pack(fill="x")
 
@@ -48,42 +48,36 @@ class App(tk.Tk):
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
         tk.Button(file_frame, text="Browse", command=self._browse_audio).grid(row=0, column=2, padx=(8, 0))
 
+        # Transcribe checkbox
         tk.Checkbutton(
             self,
             text="Transcribe lyrics",
             variable=self._transcribe,
         ).pack(anchor="w", padx=16)
 
-        self._tx_frame = tk.Frame(self, padx=32)
-        self._tx_frame.pack(anchor="w", fill="x", pady=(2, 8))
+        # Lyrics options — always visible
+        opts_frame = tk.Frame(self, padx=16)
+        opts_frame.pack(anchor="w", fill="x", pady=(4, 8))
 
-        tk.Label(self._tx_frame, text="Lyric increment (s):").grid(row=0, column=0, sticky="w")
-        self._increment_entry = tk.Entry(self._tx_frame, textvariable=self._increment, width=6)
-        self._increment_entry.grid(row=0, column=1, sticky="w", padx=(6, 0))
+        tk.Label(opts_frame, text="Lyric increment (s):").grid(row=0, column=0, sticky="w")
+        tk.Entry(opts_frame, textvariable=self._increment, width=6).grid(
+            row=0, column=1, sticky="w", padx=(6, 0)
+        )
 
-        tk.Label(self._tx_frame, text="Reference transcript (optional):").grid(
+        tk.Label(opts_frame, text="Reference transcript (optional):").grid(
             row=1, column=0, sticky="w", pady=(6, 0)
         )
-        self._reference_entry = tk.Entry(
-            self._tx_frame, textvariable=self._reference_path, width=38, state="readonly"
+        tk.Entry(
+            opts_frame, textvariable=self._reference_path, width=38, state="readonly"
+        ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        tk.Button(opts_frame, text="Browse", command=self._browse_reference).grid(
+            row=1, column=2, padx=(6, 0), pady=(6, 0)
         )
-        self._reference_entry.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        self._reference_browse_btn = tk.Button(
-            self._tx_frame, text="Browse", command=self._browse_reference
+        tk.Button(opts_frame, text="Clear", command=lambda: self._reference_path.set("")).grid(
+            row=1, column=3, padx=(4, 0), pady=(6, 0)
         )
-        self._reference_browse_btn.grid(row=1, column=2, padx=(6, 0), pady=(6, 0))
-        self._reference_clear_btn = tk.Button(
-            self._tx_frame, text="Clear", command=lambda: self._reference_path.set("")
-        )
-        self._reference_clear_btn.grid(row=1, column=3, padx=(4, 0), pady=(6, 0))
 
-        self._tx_widgets = [
-            self._increment_entry,
-            self._reference_browse_btn,
-            self._reference_clear_btn,
-        ]
-        self._set_tx_state("disabled")
-
+        # Action buttons
         btn_row = tk.Frame(self)
         btn_row.pack(pady=(0, 6))
 
@@ -95,41 +89,22 @@ class App(tk.Tk):
         )
         self._edit_btn.pack(side="left")
 
+        # Progress + status
         self._progress_frame = tk.Frame(self, height=20)
         self._progress_frame.pack(fill="x", padx=16, pady=(0, 4))
         self._progress_frame.pack_propagate(False)
-
         self._progress = ttk.Progressbar(self._progress_frame, mode="determinate", maximum=100)
 
         tk.Label(self, textvariable=self._status, fg="gray").pack(pady=(0, 12))
 
-    def _set_tx_state(self, state: str):
-        for w in self._tx_widgets:
-            w.config(state=state)
-
-    def _on_transcribe_toggle(self, *_):
-        self._set_tx_state("normal" if self._transcribe.get() else "disabled")
-
     def _browse_audio(self):
         path = filedialog.askopenfilename(filetypes=AUDIO_FILETYPES)
-        if path:
-            self._file_path.set(path)
-            self._check_existing_info(path)
-
-    def _check_existing_info(self, audio_path: str):
-        info_path = os.path.splitext(audio_path)[0] + ".info"
-        if os.path.exists(info_path):
-            try:
-                with open(info_path, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-                if info.get("lyrics", {}).get("cues"):
-                    self._last_info_path = info_path
-                    self._edit_btn.config(state="normal")
-                    return
-            except Exception:
-                pass
-        self._last_info_path = None
-        self._edit_btn.config(state="disabled")
+        if not path:
+            return
+        self._file_path.set(path)
+        info_path = os.path.splitext(path)[0] + ".info"
+        self._last_info_path = info_path if os.path.exists(info_path) else None
+        self._edit_btn.config(state="normal")
 
     def _browse_reference(self):
         path = filedialog.askopenfilename(filetypes=TRANSCRIPT_FILETYPES)
@@ -156,7 +131,6 @@ class App(tk.Tk):
             from tkinter import messagebox
             messagebox.showwarning("No file selected", "Please select an audio file first.")
             return
-        self._edit_btn.config(state="disabled")
         self._set_busy(True)
         threading.Thread(target=self._run_generate, args=(path,), daemon=True).start()
 
@@ -173,19 +147,18 @@ class App(tk.Tk):
                 transcribe_increment=self._increment_value(),
                 progress_callback=on_progress if transcribing else None,
             )
-            self.after(0, lambda: self._on_done(out, transcribing))
+            self.after(0, lambda: self._on_done(out))
         except Exception as e:
             self.after(0, lambda: self._on_error(e))
 
     def _update_progress(self, value: int):
         self._progress["value"] = value
 
-    def _on_done(self, out: str, has_lyrics: bool):
+    def _on_done(self, out: str):
         self._update_progress(100)
         self._set_busy(False)
-        if has_lyrics:
-            self._last_info_path = out
-            self._edit_btn.config(state="normal")
+        self._last_info_path = out
+        self._edit_btn.config(state="normal")
         from tkinter import messagebox
         messagebox.showinfo("Done", f"Asset saved to:\n{out}")
 
@@ -208,9 +181,17 @@ class App(tk.Tk):
             self._status.set("")
 
     def _open_editor(self):
-        if not self._last_info_path:
+        audio_path = self._file_path.get()
+        if not audio_path:
             return
-        LyricsEditor(self, self._last_info_path, reference_transcript=self._reference_text())
+        info_path = self._last_info_path or os.path.splitext(audio_path)[0] + ".info"
+        LyricsEditor(
+            self,
+            info_path=info_path,
+            audio_path=audio_path,
+            increment=self._increment_value(),
+            reference_transcript=self._reference_text(),
+        )
 
 
 if __name__ == "__main__":
