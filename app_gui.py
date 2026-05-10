@@ -25,9 +25,9 @@ TRANSCRIPT_FILETYPES = [
 DEFAULT_INCREMENT = 5.0
 
 
-class App(tk.Tk):
-    def __init__(self):
-        super().__init__()
+class App(tk.Toplevel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.title("Audio Asset Creator")
         self.resizable(False, False)
         self._file_path = tk.StringVar()
@@ -221,4 +221,8 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    root = tk.Tk()
+    root.withdraw()
+    app = App(root)
+    app.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.mainloop()
