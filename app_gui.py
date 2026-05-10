@@ -7,12 +7,15 @@ from tkinter import filedialog, ttk
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "utility", "error_log_py"))
+sys.path.insert(0, os.path.join(_HERE, "utility", "git_version_py"))
 
 import error_log
+import git_version
 from audioasset_creator import save
 from app_lyrics_editor import LyricsEditor
 
 error_log.setup(os.path.join(_HERE, "audioasset_creator.err"))
+_VERSION = git_version.get(_HERE)
 
 AUDIO_FILETYPES = [
     ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
@@ -28,7 +31,7 @@ DEFAULT_INCREMENT = 5.0
 class App(tk.Toplevel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.title("Audio Asset Creator")
+        self.title(f"Audio Asset Creator {_VERSION}")
         self.resizable(False, False)
         self._file_path = tk.StringVar()
         self._save_dir = tk.StringVar()

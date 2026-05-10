@@ -1,3 +1,6 @@
 [submodule "utility/error_log_py"]
 	path = utility/error_log_py
 	url = https://github.com/murtuzaq/error_log_py.git
+[submodule "utility/git_version_py"]
+	path = utility/git_version_py
+	url = https://github.com/murtuzaq/git_version_py.git
