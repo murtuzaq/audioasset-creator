@@ -26,10 +26,30 @@ class LyricsEditor(tk.Toplevel):
         self._cue_vars: list[tk.StringVar] = []
 
         self._info = self._load_info()
+        self._check_audio_path()
         self._ensure_cues()
 
         self._build_ui()
         self.geometry("940x560" if reference_transcript else "520x560")
+
+    def _check_audio_path(self):
+        stored = self._info.get("audio_path", "")
+        if stored and not os.path.exists(stored):
+            from tkinter import messagebox
+            if messagebox.askyesno(
+                "Audio file not found",
+                f"The audio file could not be found at:\n{stored}\n\nWould you like to locate it?",
+            ):
+                new_path = tk.filedialog.askopenfilename(
+                    title="Locate audio file",
+                    filetypes=[
+                        ("Audio files", "*.mp3 *.wav *.flac *.aac *.ogg *.m4a *.wma"),
+                        ("All files", "*.*"),
+                    ],
+                )
+                if new_path:
+                    self._info["audio_path"] = os.path.abspath(new_path)
+                    self._audio_path = new_path
 
     def _load_info(self) -> dict:
         if os.path.exists(self._info_path):

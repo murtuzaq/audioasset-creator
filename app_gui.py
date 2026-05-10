@@ -31,6 +31,7 @@ class App(tk.Tk):
         self.title("Audio Asset Creator")
         self.resizable(False, False)
         self._file_path = tk.StringVar()
+        self._save_dir = tk.StringVar()
         self._transcribe = tk.BooleanVar()
         self._increment = tk.StringVar(value=str(DEFAULT_INCREMENT))
         self._reference_path = tk.StringVar()
@@ -41,19 +42,23 @@ class App(tk.Tk):
 
     def _build_ui(self):
         # Audio file row
-        file_frame = tk.Frame(self, padx=16, pady=16)
+        file_frame = tk.Frame(self, padx=16, pady=(16, 4))
         file_frame.pack(fill="x")
 
         tk.Label(file_frame, text="Audio File:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
         tk.Button(file_frame, text="Browse", command=self._browse_audio).grid(row=0, column=2, padx=(8, 0))
 
+        # Save directory row
+        tk.Label(file_frame, text="Save to:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
+        tk.Entry(file_frame, textvariable=self._save_dir, width=48, state="readonly").grid(row=1, column=1, pady=(6, 0))
+        tk.Button(file_frame, text="Browse", command=self._browse_save_dir).grid(row=1, column=2, padx=(8, 0), pady=(6, 0))
+
+        # Separator
+        tk.Frame(self, height=1, bg="#cccccc").pack(fill="x", padx=16, pady=(8, 4))
+
         # Transcribe checkbox
-        tk.Checkbutton(
-            self,
-            text="Transcribe lyrics",
-            variable=self._transcribe,
-        ).pack(anchor="w", padx=16)
+        tk.Checkbutton(self, text="Transcribe lyrics", variable=self._transcribe).pack(anchor="w", padx=16)
 
         # Lyrics options — always visible
         opts_frame = tk.Frame(self, padx=16)
@@ -67,9 +72,9 @@ class App(tk.Tk):
         tk.Label(opts_frame, text="Reference transcript (optional):").grid(
             row=1, column=0, sticky="w", pady=(6, 0)
         )
-        tk.Entry(
-            opts_frame, textvariable=self._reference_path, width=38, state="readonly"
-        ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        tk.Entry(opts_frame, textvariable=self._reference_path, width=38, state="readonly").grid(
+            row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0)
+        )
         tk.Button(opts_frame, text="Browse", command=self._browse_reference).grid(
             row=1, column=2, padx=(6, 0), pady=(6, 0)
         )
@@ -102,7 +107,21 @@ class App(tk.Tk):
         if not path:
             return
         self._file_path.set(path)
-        info_path = os.path.splitext(path)[0] + ".info"
+        audio_dir = os.path.dirname(os.path.abspath(path))
+        self._save_dir.set(audio_dir)
+        self._refresh_edit_btn(audio_dir, os.path.basename(path))
+
+    def _browse_save_dir(self):
+        path = filedialog.askdirectory()
+        if path:
+            self._save_dir.set(path)
+            audio = self._file_path.get()
+            if audio:
+                self._refresh_edit_btn(path, os.path.basename(audio))
+
+    def _refresh_edit_btn(self, save_dir: str, audio_basename: str):
+        base = os.path.splitext(audio_basename)[0]
+        info_path = os.path.join(save_dir, base + ".info")
         self._last_info_path = info_path if os.path.exists(info_path) else None
         self._edit_btn.config(state="normal")
 
@@ -136,6 +155,7 @@ class App(tk.Tk):
 
     def _run_generate(self, path: str):
         transcribing = self._transcribe.get()
+        out_dir = self._save_dir.get() or None
 
         def on_progress(fraction):
             self.after(0, lambda: self._update_progress(int(fraction * 100)))
@@ -145,6 +165,7 @@ class App(tk.Tk):
                 path,
                 transcribe=transcribing,
                 transcribe_increment=self._increment_value(),
+                output_dir=out_dir,
                 progress_callback=on_progress if transcribing else None,
             )
             self.after(0, lambda: self._on_done(out))
@@ -184,7 +205,12 @@ class App(tk.Tk):
         audio_path = self._file_path.get()
         if not audio_path:
             return
-        info_path = self._last_info_path or os.path.splitext(audio_path)[0] + ".info"
+        if self._last_info_path:
+            info_path = self._last_info_path
+        else:
+            save_dir = self._save_dir.get() or os.path.dirname(os.path.abspath(audio_path))
+            base = os.path.splitext(os.path.basename(audio_path))[0]
+            info_path = os.path.join(save_dir, base + ".info")
         LyricsEditor(
             self,
             info_path=info_path,
