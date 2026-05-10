@@ -9,11 +9,21 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _version() -> str:
     try:
         v = subprocess.check_output(
-            ["git", "describe", "--tags"],
+            ["git", "describe", "--tags", "--dirty"],
             cwd=_REPO_ROOT,
             stderr=subprocess.DEVNULL,
         ).decode().strip()
         return v if v else "v0.1.0"
+    except Exception:
+        pass
+    # No tags — fall back to v0.1.0, still reflect dirty state
+    try:
+        dirty = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=_REPO_ROOT,
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        return "v0.1.0-dirty" if dirty else "v0.1.0"
     except Exception:
         return "v0.1.0"
 
