@@ -44,7 +44,6 @@ def save(
     audio_path: str,
     transcribe: bool = False,
     transcribe_increment: float = 5.0,
-    known_transcript: str | None = None,
     progress_callback=None,
 ) -> str:
     info = extract(audio_path)
@@ -54,7 +53,6 @@ def save(
         info["lyrics"] = do_transcribe(
             audio_path,
             increment=transcribe_increment,
-            known_transcript=known_transcript,
             progress_callback=progress_callback,
         )
     out_path = os.path.splitext(audio_path)[0] + ".info"
