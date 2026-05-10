@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import threading
@@ -108,15 +109,27 @@ class App(tk.Tk):
 
     def _on_transcribe_toggle(self, *_):
         self._set_tx_state("normal" if self._transcribe.get() else "disabled")
-        if not self._transcribe.get():
-            self._edit_btn.config(state="disabled")
 
     def _browse_audio(self):
         path = filedialog.askopenfilename(filetypes=AUDIO_FILETYPES)
         if path:
             self._file_path.set(path)
-            self._edit_btn.config(state="disabled")
-            self._last_info_path = None
+            self._check_existing_info(path)
+
+    def _check_existing_info(self, audio_path: str):
+        info_path = os.path.splitext(audio_path)[0] + ".info"
+        if os.path.exists(info_path):
+            try:
+                with open(info_path, "r", encoding="utf-8") as f:
+                    info = json.load(f)
+                if info.get("lyrics", {}).get("cues"):
+                    self._last_info_path = info_path
+                    self._edit_btn.config(state="normal")
+                    return
+            except Exception:
+                pass
+        self._last_info_path = None
+        self._edit_btn.config(state="disabled")
 
     def _browse_reference(self):
         path = filedialog.askopenfilename(filetypes=TRANSCRIPT_FILETYPES)
