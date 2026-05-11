@@ -173,7 +173,7 @@ class App(tk.Toplevel):
             )
             self.after(0, lambda: self._on_done(out))
         except Exception as e:
-            self.after(0, lambda: self._on_error(e))
+            self.after(0, lambda e=e: self._on_error(e))
 
     def _update_progress(self, value: int):
         self._progress["value"] = value
