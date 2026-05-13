@@ -1,8 +1,11 @@
 import json
 import os
 import sys
+import tempfile
 import threading
 import tkinter as tk
+import urllib.parse
+import urllib.request
 from tkinter import filedialog, ttk
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +54,7 @@ class App(tk.Toplevel):
         tk.Label(file_frame, text="Audio File:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         tk.Entry(file_frame, textvariable=self._file_path, width=48, state="readonly").grid(row=0, column=1)
         tk.Button(file_frame, text="Browse", command=self._browse_audio).grid(row=0, column=2, padx=(8, 0))
+        tk.Button(file_frame, text="From URL…", command=self._from_url).grid(row=0, column=3, padx=(4, 0))
 
         # Save directory row
         tk.Label(file_frame, text="Save to:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
@@ -113,6 +117,16 @@ class App(tk.Toplevel):
         audio_dir = os.path.dirname(os.path.abspath(path))
         self._save_dir.set(audio_dir)
         self._refresh_edit_btn(audio_dir, os.path.basename(path))
+
+    def _from_url(self):
+        dialog = _UrlImportDialog(self)
+        self.wait_window(dialog)
+        if dialog.result_path:
+            path = dialog.result_path
+            self._file_path.set(path)
+            audio_dir = os.path.dirname(os.path.abspath(path))
+            self._save_dir.set(audio_dir)
+            self._refresh_edit_btn(audio_dir, os.path.basename(path))
 
     def _browse_save_dir(self):
         path = filedialog.askdirectory()
@@ -221,6 +235,98 @@ class App(tk.Toplevel):
             increment=self._increment_value(),
             reference_transcript=self._reference_text(),
         )
+
+
+_AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".webm", ".opus"}
+
+
+def _download_audio(url: str) -> str:
+    dest_dir = tempfile.mkdtemp(prefix="audioasset_")
+
+    # Try yt-dlp (handles YouTube, SoundCloud, Bandcamp, etc.)
+    try:
+        import yt_dlp
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(dest_dir, "%(title)s.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        for fname in os.listdir(dest_dir):
+            if os.path.splitext(fname)[1].lower() in _AUDIO_EXTENSIONS:
+                return os.path.join(dest_dir, fname)
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # Fallback: direct HTTP download
+    parsed = urllib.parse.urlparse(url)
+    filename = os.path.basename(parsed.path) or "audio"
+    if not os.path.splitext(filename)[1]:
+        filename += ".mp3"
+    dest_path = os.path.join(dest_dir, filename)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req) as resp, open(dest_path, "wb") as f:
+        f.write(resp.read())
+    return dest_path
+
+
+class _UrlImportDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Import from URL")
+        self.resizable(False, False)
+        self.result_path: str | None = None
+        self._url = tk.StringVar()
+        self._status = tk.StringVar()
+        self._build_ui()
+        self.grab_set()
+        self.transient(parent)
+
+    def _build_ui(self):
+        frame = tk.Frame(self, padx=16, pady=12)
+        frame.pack(fill="both")
+
+        tk.Label(frame, text="URL:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        url_entry = tk.Entry(frame, textvariable=self._url, width=54)
+        url_entry.grid(row=0, column=1, sticky="ew")
+        url_entry.focus_set()
+
+        self._import_btn = tk.Button(frame, text="Import", command=self._start_import, padx=16)
+        self._import_btn.grid(row=1, column=0, columnspan=2, pady=(10, 0))
+
+        tk.Label(frame, textvariable=self._status, fg="gray", wraplength=380).grid(
+            row=2, column=0, columnspan=2, pady=(6, 0)
+        )
+
+        self.bind("<Return>", lambda _e: self._start_import())
+
+    def _start_import(self):
+        url = self._url.get().strip()
+        if not url:
+            return
+        self._import_btn.config(state="disabled")
+        self._status.set("Downloading…")
+        threading.Thread(target=self._run, args=(url,), daemon=True).start()
+
+    def _run(self, url: str):
+        try:
+            path = _download_audio(url)
+            self.after(0, lambda: self._on_done(path))
+        except Exception as exc:
+            self.after(0, lambda e=exc: self._on_error(e))
+
+    def _on_done(self, path: str):
+        self.result_path = path
+        self.destroy()
+
+    def _on_error(self, exc: Exception):
+        self._import_btn.config(state="normal")
+        self._status.set(f"Error: {exc}")
 
 
 if __name__ == "__main__":
