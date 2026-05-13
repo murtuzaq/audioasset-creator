@@ -1,11 +1,13 @@
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
 import tkinter as tk
 import urllib.parse
 import urllib.request
+import webbrowser
 from tkinter import filedialog, ttk
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +31,14 @@ TRANSCRIPT_FILETYPES = [
     ("All files", "*.*"),
 ]
 DEFAULT_INCREMENT = 5.0
+
+_YT_RE = re.compile(r"(youtube\.com|youtu\.be)", re.IGNORECASE)
+_CONVERTERS = [
+    ("cobalt.tools", "https://cobalt.tools/"),
+    ("y2mate", "https://www.y2mate.com/"),
+    ("yt1s", "https://yt1s.com/"),
+    ("ytmp3.cc", "https://ytmp3.cc/"),
+]
 
 
 class App(tk.Toplevel):
@@ -344,12 +354,24 @@ class _UrlImportDialog(tk.Toplevel):
         url_entry = tk.Entry(url_frame, textvariable=self._url, width=54)
         url_entry.pack(side="left", fill="x", expand=True)
         url_entry.focus_set()
+        url_entry.bind("<KeyRelease>", lambda _e: self._on_url_change())
+        url_entry.bind("<FocusOut>", lambda _e: self._on_url_change())
+
+        # Converter shortcuts (shown only when a YouTube URL is detected)
+        self._converter_frame = tk.Frame(self, padx=16)
+        tk.Label(self._converter_frame, text="Open in converter:", fg="gray").pack(side="left", padx=(0, 8))
+        for name, site_url in _CONVERTERS:
+            tk.Button(
+                self._converter_frame, text=name, padx=6, pady=2,
+                command=lambda u=site_url: self._open_converter(u),
+            ).pack(side="left", padx=(0, 4))
 
         # Login toggle
-        tk.Checkbutton(
+        self._login_check = tk.Checkbutton(
             self, text="Login required (optional)",
             variable=self._show_login, command=self._toggle_login,
-        ).pack(anchor="w", padx=16, pady=(8, 0))
+        )
+        self._login_check.pack(anchor="w", padx=16, pady=(8, 0))
 
         # Login fields (hidden until toggled on)
         self._login_frame = tk.Frame(self, padx=16)
@@ -371,6 +393,21 @@ class _UrlImportDialog(tk.Toplevel):
         self._status_label.pack(pady=(0, 12))
 
         self.bind("<Return>", lambda _e: self._start_import())
+
+    def _on_url_change(self):
+        url = self._url.get().strip()
+        if _YT_RE.search(url):
+            if not self._converter_frame.winfo_ismapped():
+                self._converter_frame.pack(fill="x", pady=(6, 0), before=self._login_check)
+        else:
+            self._converter_frame.pack_forget()
+
+    def _open_converter(self, site_url: str):
+        yt_url = self._url.get().strip()
+        self.clipboard_clear()
+        self.clipboard_append(yt_url)
+        webbrowser.open(site_url)
+        self._status.set("YouTube URL copied to clipboard — paste it on the converter site")
 
     def _toggle_login(self):
         if self._show_login.get():
