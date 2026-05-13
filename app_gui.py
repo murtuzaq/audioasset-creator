@@ -240,19 +240,49 @@ class App(tk.Toplevel):
 _AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".webm", ".opus"}
 
 
-def _download_audio(url: str) -> str:
+def _download_audio(
+    url: str,
+    username: str = "",
+    password: str = "",
+    progress_callback=None,  # (fraction: float, status_text: str) -> None
+) -> str:
     dest_dir = tempfile.mkdtemp(prefix="audioasset_")
 
     # Try yt-dlp (handles YouTube, SoundCloud, Bandcamp, etc.)
     try:
         import yt_dlp
 
+        def _yt_hook(d):
+            if progress_callback is None:
+                return
+            if d["status"] == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                downloaded = d.get("downloaded_bytes", 0)
+                fraction = downloaded / total if total else 0
+                parts = []
+                if total:
+                    parts.append(f"{downloaded / 1e6:.1f} / {total / 1e6:.1f} MB")
+                speed = d.get("speed")
+                if speed:
+                    parts.append(f"{speed / 1e6:.1f} MB/s")
+                eta = d.get("eta")
+                if eta:
+                    parts.append(f"{eta}s left")
+                progress_callback(fraction, " • ".join(parts))
+            elif d["status"] == "finished":
+                progress_callback(1.0, "Processing…")
+
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": os.path.join(dest_dir, "%(title)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            "progress_hooks": [_yt_hook],
         }
+        if username:
+            ydl_opts["username"] = username
+            ydl_opts["password"] = password
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         for fname in os.listdir(dest_dir):
@@ -263,15 +293,31 @@ def _download_audio(url: str) -> str:
     except Exception:
         pass
 
-    # Fallback: direct HTTP download
+    # Fallback: direct HTTP download with chunked progress
+    if progress_callback:
+        progress_callback(0.0, "Trying direct download…")
     parsed = urllib.parse.urlparse(url)
     filename = os.path.basename(parsed.path) or "audio"
     if not os.path.splitext(filename)[1]:
         filename += ".mp3"
     dest_path = os.path.join(dest_dir, filename)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req) as resp, open(dest_path, "wb") as f:
-        f.write(resp.read())
+    with urllib.request.urlopen(req) as resp:
+        total = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
+        with open(dest_path, "wb") as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback:
+                    fraction = downloaded / total if total else 0
+                    text = f"{downloaded / 1e6:.1f} MB"
+                    if total:
+                        text += f" / {total / 1e6:.1f} MB"
+                    progress_callback(fraction, text)
     return dest_path
 
 
@@ -282,43 +328,82 @@ class _UrlImportDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result_path: str | None = None
         self._url = tk.StringVar()
+        self._show_login = tk.BooleanVar()
+        self._username = tk.StringVar()
+        self._password = tk.StringVar()
         self._status = tk.StringVar()
         self._build_ui()
         self.grab_set()
         self.transient(parent)
 
     def _build_ui(self):
-        frame = tk.Frame(self, padx=16, pady=12)
-        frame.pack(fill="both")
-
-        tk.Label(frame, text="URL:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        url_entry = tk.Entry(frame, textvariable=self._url, width=54)
-        url_entry.grid(row=0, column=1, sticky="ew")
+        # URL row
+        url_frame = tk.Frame(self, padx=16)
+        url_frame.pack(fill="x", pady=(12, 0))
+        tk.Label(url_frame, text="URL:").pack(side="left", padx=(0, 8))
+        url_entry = tk.Entry(url_frame, textvariable=self._url, width=54)
+        url_entry.pack(side="left", fill="x", expand=True)
         url_entry.focus_set()
 
-        self._import_btn = tk.Button(frame, text="Import", command=self._start_import, padx=16)
-        self._import_btn.grid(row=1, column=0, columnspan=2, pady=(10, 0))
+        # Login toggle
+        tk.Checkbutton(
+            self, text="Login required (optional)",
+            variable=self._show_login, command=self._toggle_login,
+        ).pack(anchor="w", padx=16, pady=(8, 0))
 
-        tk.Label(frame, textvariable=self._status, fg="gray", wraplength=380).grid(
-            row=2, column=0, columnspan=2, pady=(6, 0)
-        )
+        # Login fields (hidden until toggled on)
+        self._login_frame = tk.Frame(self, padx=16)
+        lf = self._login_frame
+        tk.Label(lf, text="Username:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        tk.Entry(lf, textvariable=self._username, width=36).grid(row=0, column=1, sticky="ew")
+        tk.Label(lf, text="Password:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(4, 0))
+        tk.Entry(lf, textvariable=self._password, width=36, show="*").grid(row=1, column=1, pady=(4, 0))
+
+        # Import button
+        self._import_btn = tk.Button(self, text="Import", command=self._start_import, padx=16)
+        self._import_btn.pack(pady=(10, 6))
+
+        # Progress bar (hidden until download starts)
+        self._progress = ttk.Progressbar(self, mode="determinate", maximum=100, length=390)
+
+        # Status label
+        self._status_label = tk.Label(self, textvariable=self._status, fg="gray", wraplength=390)
+        self._status_label.pack(pady=(0, 12))
 
         self.bind("<Return>", lambda _e: self._start_import())
+
+    def _toggle_login(self):
+        if self._show_login.get():
+            self._login_frame.pack(fill="x", pady=(4, 0), before=self._import_btn)
+        else:
+            self._login_frame.pack_forget()
 
     def _start_import(self):
         url = self._url.get().strip()
         if not url:
             return
         self._import_btn.config(state="disabled")
-        self._status.set("Downloading…")
-        threading.Thread(target=self._run, args=(url,), daemon=True).start()
+        self._status.set("Connecting…")
+        self._progress["value"] = 0
+        self._progress.pack(padx=16, pady=(0, 4), before=self._status_label)
+        username = self._username.get().strip() if self._show_login.get() else ""
+        password = self._password.get() if self._show_login.get() else ""
+        threading.Thread(target=self._run, args=(url, username, password), daemon=True).start()
 
-    def _run(self, url: str):
+    def _run(self, url: str, username: str, password: str):
+        def on_progress(fraction, text):
+            pct = int(fraction * 100)
+            self.after(0, lambda p=pct, t=text: self._update_progress(p, t))
+
         try:
-            path = _download_audio(url)
+            path = _download_audio(url, username=username, password=password, progress_callback=on_progress)
             self.after(0, lambda: self._on_done(path))
         except Exception as exc:
             self.after(0, lambda e=exc: self._on_error(e))
+
+    def _update_progress(self, pct: int, text: str):
+        self._progress["value"] = pct
+        self._status.set(text)
 
     def _on_done(self, path: str):
         self.result_path = path
@@ -326,6 +411,7 @@ class _UrlImportDialog(tk.Toplevel):
 
     def _on_error(self, exc: Exception):
         self._import_btn.config(state="normal")
+        self._progress.pack_forget()
         self._status.set(f"Error: {exc}")
 
 
